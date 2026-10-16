@@ -2,7 +2,7 @@ import { x25519 } from "@noble/curves/ed25519";
 import { hkdf } from "@noble/hashes/hkdf";
 import { sha256 } from "@noble/hashes/sha2";
 import { aesDecrypt, aesEncrypt, importAesKey } from "./aes.js";
-import { concat, randomBytes } from "./bytes.js";
+import { concat, randomBytes, zeroBytes } from "./bytes.js";
 
 const INFO = new TextEncoder().encode("sealdrop-seal-v1");
 const PKCS8_PREFIX = Uint8Array.from([
@@ -23,7 +23,11 @@ export function pkcs8ToRawPrivate(pkcs8: Uint8Array): Uint8Array {
 
 export function generateRequestKeyPair(): { publicKey: Uint8Array; privatePkcs8: Uint8Array } {
   const secret = randomBytes(32);
-  return { publicKey: x25519.getPublicKey(secret), privatePkcs8: rawPrivateToPkcs8(secret) };
+  try {
+    return { publicKey: x25519.getPublicKey(secret), privatePkcs8: rawPrivateToPkcs8(secret) };
+  } finally {
+    zeroBytes(secret);
+  }
 }
 
 export async function sealFileKey(fileKeyRaw: Uint8Array, recipientPublic: Uint8Array): Promise<Uint8Array> {
@@ -31,9 +35,16 @@ export async function sealFileKey(fileKeyRaw: Uint8Array, recipientPublic: Uint8
   const ephemeral = randomBytes(32);
   const ephemeralPublic = x25519.getPublicKey(ephemeral);
   const shared = x25519.getSharedSecret(ephemeral, recipientPublic);
-  const wrapping = await importAesKey(hkdf(sha256, shared, ephemeralPublic, INFO, 32), ["encrypt"]);
-  const { iv, ciphertext } = await aesEncrypt(wrapping, fileKeyRaw);
-  return concat([ephemeralPublic, iv, ciphertext]);
+  const derived = hkdf(sha256, shared, ephemeralPublic, INFO, 32);
+  try {
+    const wrapping = await importAesKey(derived, ["encrypt"]);
+    const { iv, ciphertext } = await aesEncrypt(wrapping, fileKeyRaw);
+    return concat([ephemeralPublic, iv, ciphertext]);
+  } finally {
+    zeroBytes(ephemeral);
+    zeroBytes(shared);
+    zeroBytes(derived);
+  }
 }
 
 export async function unsealFileKey(sealed: Uint8Array, recipientPrivatePkcs8: Uint8Array): Promise<Uint8Array> {
@@ -41,6 +52,12 @@ export async function unsealFileKey(sealed: Uint8Array, recipientPrivatePkcs8: U
   const secret = pkcs8ToRawPrivate(recipientPrivatePkcs8);
   const ephemeralPublic = sealed.subarray(0, 32);
   const shared = x25519.getSharedSecret(secret, ephemeralPublic);
-  const wrapping = await importAesKey(hkdf(sha256, shared, ephemeralPublic, INFO, 32), ["decrypt"]);
-  return aesDecrypt(wrapping, sealed.subarray(32, 44), sealed.subarray(44));
+  const derived = hkdf(sha256, shared, ephemeralPublic, INFO, 32);
+  try {
+    const wrapping = await importAesKey(derived, ["decrypt"]);
+    return await aesDecrypt(wrapping, sealed.subarray(32, 44), sealed.subarray(44));
+  } finally {
+    zeroBytes(shared);
+    zeroBytes(derived);
+  }
 }

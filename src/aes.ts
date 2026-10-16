@@ -59,7 +59,9 @@ export function ciphertextByteLength(plainBytes: number, chunkBytes = CHUNK_BYTE
 }
 
 export function ciphertextFrameLengths(plainBytes: number, chunkBytes = CHUNK_BYTES): number[] {
-  if (plainBytes <= 0) return [28];
+  if (!Number.isSafeInteger(chunkBytes) || chunkBytes <= 0) throw new Error("chunkBytes must be positive");
+  if (!Number.isSafeInteger(plainBytes) || plainBytes < 0) throw new Error("plainBytes must be non-negative");
+  if (plainBytes === 0) return [28];
   const lengths: number[] = [];
   for (let written = 0; written < plainBytes; written += chunkBytes) {
     const size = Math.min(chunkBytes, plainBytes - written);
@@ -83,6 +85,7 @@ export async function encryptPlaintext(
   chunkBytes = CHUNK_BYTES,
   firstIndex = 0,
 ): Promise<Uint8Array> {
+  if (!Number.isSafeInteger(chunkBytes) || chunkBytes <= 0) throw new Error("chunkBytes must be positive");
   if (plain.byteLength === 0) return encryptChunk(key, plain, firstIndex);
   const parts: Uint8Array[] = [];
   for (let offset = 0, index = firstIndex; offset < plain.byteLength; offset += chunkBytes, index += 1) {
@@ -98,6 +101,9 @@ export async function decryptPlaintext(
   chunkBytes = CHUNK_BYTES,
   firstIndex = 0,
 ): Promise<Uint8Array> {
+  const expectedCipherBytes = ciphertextByteLength(plainBytes, chunkBytes);
+  if (blob.byteLength < expectedCipherBytes) throw new Error("truncated ciphertext");
+  if (blob.byteLength > expectedCipherBytes) throw new Error("unexpected ciphertext length");
   const out = new Uint8Array(plainBytes);
   let read = 0;
   let written = 0;

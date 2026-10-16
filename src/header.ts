@@ -20,8 +20,16 @@ export async function encryptHeader(key: CryptoKey, header: FileHeader) {
 
 export async function decryptHeader(key: CryptoKey, iv: Uint8Array, ciphertext: Uint8Array): Promise<FileHeader> {
   const json = new TextDecoder().decode(await aesDecrypt(key, iv, ciphertext));
-  const header = JSON.parse(json) as FileHeader;
-  if (typeof header.filename !== "string" || typeof header.bytes !== "number") throw new Error("header is not a file header");
+  const header = JSON.parse(json) as FileHeader | null;
+  if (
+    !header ||
+    typeof header !== "object" ||
+    typeof header.filename !== "string" ||
+    !Number.isSafeInteger(header.bytes) ||
+    header.bytes < 0
+  ) {
+    throw new Error("header is not a file header");
+  }
   return header;
 }
 

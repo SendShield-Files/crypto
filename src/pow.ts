@@ -7,6 +7,7 @@ import { argon2id } from "hash-wasm";
  */
 
 function hasLeadingZeroBits(bytes: Uint8Array, bits: number): boolean {
+  if (!Number.isSafeInteger(bits) || bits < 0 || bits > bytes.length * 8) return false;
   const fullBytes = Math.floor(bits / 8);
   const remainingBits = bits % 8;
 

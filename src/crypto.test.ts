@@ -117,4 +117,21 @@ describe("crypto", () => {
     expect(() => zeroBytes(null)).not.toThrow();
     expect(() => zeroBytes(undefined)).not.toThrow();
   });
+
+  it("rejects forged plainBytes before allocating memory in decryptPlaintext", async () => {
+    const key = await generateFileKey();
+    const cipher = await encryptPlaintext(new Uint8Array([1, 2, 3]), key);
+    await expect(decryptPlaintext(cipher, key, 4 * 1024 * 1024 * 1024)).rejects.toThrow("truncated ciphertext");
+    await expect(decryptPlaintext(cipher, key, -5)).rejects.toThrow("plainBytes must be non-negative");
+    await expect(decryptPlaintext(cipher, key, 3, 0)).rejects.toThrow("chunkBytes must be positive");
+  });
+
+  it("rejects malformed or negative-bytes headers in decryptHeader", async () => {
+    const key = await generateFileKey();
+    const badHeader = await aesEncrypt(key, new TextEncoder().encode(JSON.stringify({ filename: "x.txt", mime: "text/plain", bytes: -1 })));
+    await expect(decryptHeader(key, badHeader.iv, badHeader.ciphertext)).rejects.toThrow("header is not a file header");
+
+    const nullHeader = await aesEncrypt(key, new TextEncoder().encode("null"));
+    await expect(decryptHeader(key, nullHeader.iv, nullHeader.ciphertext)).rejects.toThrow("header is not a file header");
+  });
 });

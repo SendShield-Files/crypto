@@ -1,5 +1,5 @@
 import { argon2id } from "hash-wasm";
-import { concat, fromBase64Url, randomBytes, toBase64Url } from "./bytes.js";
+import { concat, fromBase64Url, randomBytes, toBase64Url, zeroBytes } from "./bytes.js";
 import { aesDecrypt, aesEncrypt, exportFileKey, importAesKey, importFileKey } from "./aes.js";
 
 export const ARGON = {
@@ -31,7 +31,12 @@ export async function importVaultKey(raw: Uint8Array): Promise<CryptoKey> {
 }
 
 export async function deriveVaultKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
-  return importVaultKey(await deriveVaultBytes(password, salt));
+  const raw = await deriveVaultBytes(password, salt);
+  try {
+    return await importVaultKey(raw);
+  } finally {
+    zeroBytes(raw);
+  }
 }
 
 export const VAULT_CANARY = "VALID_VAULT_KEY_2026";
@@ -64,11 +69,21 @@ export async function unwrapBytes(key: CryptoKey, iv: Uint8Array, ciphertext: Ui
 }
 
 export async function wrapFileKey(key: CryptoKey, fileKey: CryptoKey): Promise<{ iv: Uint8Array; ciphertext: Uint8Array }> {
-  return wrapBytes(key, await exportFileKey(fileKey));
+  const raw = await exportFileKey(fileKey);
+  try {
+    return await wrapBytes(key, raw);
+  } finally {
+    zeroBytes(raw);
+  }
 }
 
 export async function unwrapFileKey(key: CryptoKey, iv: Uint8Array, ciphertext: Uint8Array): Promise<CryptoKey> {
-  return importFileKey(await unwrapBytes(key, iv, ciphertext));
+  const raw = await unwrapBytes(key, iv, ciphertext);
+  try {
+    return await importFileKey(raw);
+  } finally {
+    zeroBytes(raw);
+  }
 }
 
 export async function wrapWithPassphrase(passphrase: string, fileKey: CryptoKey) {
