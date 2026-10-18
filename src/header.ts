@@ -11,6 +11,8 @@ export type FileHeader = {
   manifest?: { name: string; bytes: number }[];
   viewOnce?: boolean;
   watermark?: boolean;
+  watermarkLabel?: string;
+  secretMode?: boolean;
 };
 
 export async function encryptHeader(key: CryptoKey, header: FileHeader) {
