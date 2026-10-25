@@ -13,6 +13,7 @@ export type FileHeader = {
   watermark?: boolean;
   watermarkLabel?: string;
   secretMode?: boolean;
+  title?: string;
 };
 
 export async function encryptHeader(key: CryptoKey, header: FileHeader) {

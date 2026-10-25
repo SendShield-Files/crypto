@@ -76,6 +76,21 @@ describe("crypto", () => {
     await expect(unwrapWithPassphrase("", passphrase.salt, passphrase.iv, passphrase.ciphertext)).rejects.toThrow();
     const fromPhrase = await unwrapWithPassphrase("share-this-phrase", passphrase.salt, passphrase.iv, passphrase.ciphertext);
     expect(await exportFileKey(fromPhrase)).toEqual(await exportFileKey(fileKey));
+
+    // v2: Passphrase combined with 256-bit link key (Option A)
+    const linkKey = randomBytes(32);
+    const v2Wrap = await wrapWithPassphrase("share-this-phrase", fileKey, linkKey);
+    expect(v2Wrap.params.v).toBe(2);
+    // Correct passphrase and correct link key unlocks
+    const v2Opened = await unwrapWithPassphrase("share-this-phrase", v2Wrap.salt, v2Wrap.iv, v2Wrap.ciphertext, linkKey, 2);
+    expect(await exportFileKey(v2Opened)).toEqual(await exportFileKey(fileKey));
+    // Missing link key fails
+    await expect(unwrapWithPassphrase("share-this-phrase", v2Wrap.salt, v2Wrap.iv, v2Wrap.ciphertext, undefined, 2)).rejects.toThrow();
+    // Wrong link key fails
+    const wrongLinkKey = randomBytes(32);
+    await expect(unwrapWithPassphrase("share-this-phrase", v2Wrap.salt, v2Wrap.iv, v2Wrap.ciphertext, wrongLinkKey, 2)).rejects.toThrow();
+    // Wrong passphrase fails
+    await expect(unwrapWithPassphrase("wrong-phrase", v2Wrap.salt, v2Wrap.iv, v2Wrap.ciphertext, linkKey, 2)).rejects.toThrow();
   });
 
   it("seals a file key to a request public key and rejects tampering", async () => {

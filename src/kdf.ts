@@ -1,4 +1,6 @@
 import { argon2id } from "hash-wasm";
+import { hkdf } from "@noble/hashes/hkdf";
+import { sha256 } from "@noble/hashes/sha2";
 import { concat, fromBase64Url, randomBytes, toBase64Url, zeroBytes } from "./bytes.js";
 import { aesDecrypt, aesEncrypt, exportFileKey, importAesKey, importFileKey } from "./aes.js";
 
@@ -86,15 +88,43 @@ export async function unwrapFileKey(key: CryptoKey, iv: Uint8Array, ciphertext: 
   }
 }
 
-export async function wrapWithPassphrase(passphrase: string, fileKey: CryptoKey) {
+const PASSPHRASE_V2_INFO = new TextEncoder().encode("ssf-passphrase-v2");
+
+export async function wrapWithPassphrase(
+  passphrase: string,
+  fileKey: CryptoKey,
+  linkKeyBytes?: Uint8Array,
+) {
   const salt = randomBytes(16);
+  if (linkKeyBytes) {
+    if (linkKeyBytes.byteLength !== 32) throw new Error("linkKeyBytes must be 32 bytes (256 bits)");
+    const argonBytes = await deriveVaultBytes(passphrase, salt);
+    const ikm = concat([linkKeyBytes, argonBytes]);
+    const derivedKeyBytes = hkdf(sha256, ikm, salt, PASSPHRASE_V2_INFO, 32);
+    zeroBytes(argonBytes);
+    zeroBytes(ikm);
+    let wrapping: CryptoKey;
+    try {
+      wrapping = await importVaultKey(derivedKeyBytes);
+    } finally {
+      zeroBytes(derivedKeyBytes);
+    }
+    const wrapped = await wrapFileKey(wrapping, fileKey);
+    return {
+      salt,
+      iv: wrapped.iv,
+      ciphertext: wrapped.ciphertext,
+      params: { ...ARGON, v: 2 },
+    };
+  }
+
   const wrapping = await deriveVaultKey(passphrase, salt);
   const wrapped = await wrapFileKey(wrapping, fileKey);
   return {
     salt,
     iv: wrapped.iv,
     ciphertext: wrapped.ciphertext,
-    params: { ...ARGON },
+    params: { ...ARGON, v: 1 },
   };
 }
 
@@ -103,7 +133,27 @@ export async function unwrapWithPassphrase(
   salt: Uint8Array,
   iv: Uint8Array,
   ciphertext: Uint8Array,
+  linkKeyBytes?: Uint8Array,
+  v = 1,
 ): Promise<CryptoKey> {
+  if (v === 2) {
+    if (!linkKeyBytes || linkKeyBytes.byteLength !== 32) {
+      throw new Error("A 256-bit link key is required to unlock this transfer.");
+    }
+    const argonBytes = await deriveVaultBytes(passphrase, salt);
+    const ikm = concat([linkKeyBytes, argonBytes]);
+    const derivedKeyBytes = hkdf(sha256, ikm, salt, PASSPHRASE_V2_INFO, 32);
+    zeroBytes(argonBytes);
+    zeroBytes(ikm);
+    let wrapping: CryptoKey;
+    try {
+      wrapping = await importVaultKey(derivedKeyBytes);
+    } finally {
+      zeroBytes(derivedKeyBytes);
+    }
+    return unwrapFileKey(wrapping, iv, ciphertext);
+  }
+
   const wrapping = await deriveVaultKey(passphrase, salt);
   return unwrapFileKey(wrapping, iv, ciphertext);
 }
