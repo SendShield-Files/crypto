@@ -89,6 +89,16 @@ export async function unwrapFileKey(key: CryptoKey, iv: Uint8Array, ciphertext: 
 }
 
 const PASSPHRASE_V2_INFO = new TextEncoder().encode("ssf-passphrase-v2");
+const LINK_KEY_V2_INFO = new TextEncoder().encode("ssf-link-key-v2");
+
+/**
+ * The 256-bit link key of a v2 passphrase link, derived one-way from the raw file key.
+ * The sender's browser and the owner's detail page (which can open the file key through the vault)
+ * therefore always produce the same link fragment, while the fragment reveals nothing about the file key.
+ */
+export function deriveLinkKey(rawFileKey: Uint8Array): Uint8Array {
+  return hkdf(sha256, rawFileKey, undefined, LINK_KEY_V2_INFO, 32);
+}
 
 export async function wrapWithPassphrase(
   passphrase: string,
