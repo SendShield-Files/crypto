@@ -41,7 +41,8 @@ export async function deriveVaultKey(password: string, salt: Uint8Array): Promis
   }
 }
 
-export const VAULT_CANARY = "VALID_VAULT_KEY_2026";
+import { VAULT_CANARY, packVaultCanary, unpackVaultCanary } from "./canary.js";
+export { VAULT_CANARY, packVaultCanary, unpackVaultCanary };
 
 export async function sealVaultCanary(key: CryptoKey): Promise<{ iv: Uint8Array; ciphertext: Uint8Array }> {
   return wrapBytes(key, new TextEncoder().encode(VAULT_CANARY));
@@ -50,16 +51,6 @@ export async function sealVaultCanary(key: CryptoKey): Promise<{ iv: Uint8Array;
 export async function openVaultCanary(key: CryptoKey, iv: Uint8Array, ciphertext: Uint8Array): Promise<void> {
   const plain = new TextDecoder().decode(await unwrapBytes(key, iv, ciphertext));
   if (plain !== VAULT_CANARY) throw new Error("That password is wrong.");
-}
-
-export function packVaultCanary(iv: Uint8Array, ciphertext: Uint8Array): string {
-  return toBase64Url(concat([iv, ciphertext]));
-}
-
-export function unpackVaultCanary(token: string): { iv: Uint8Array; ciphertext: Uint8Array } {
-  const packed = fromBase64Url(token);
-  if (packed.byteLength < 28) throw new Error("That password is wrong.");
-  return { iv: packed.subarray(0, 12), ciphertext: packed.subarray(12) };
 }
 
 export async function wrapBytes(key: CryptoKey, plain: Uint8Array): Promise<{ iv: Uint8Array; ciphertext: Uint8Array }> {
